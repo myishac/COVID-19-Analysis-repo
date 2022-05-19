@@ -1,0 +1,886 @@
+---
+title: "COVID-19 Analysis"
+author: "Syed Atif, Myisha Chaudhry, Esha Malhi, Abigail Lee"
+date: "10/12/2020"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(magrittr)
+library(lubridate)
+library(modelr)
+library(stringr)
+```
+
+Table of Contents
+
+Introduction - 1
+
+Health Expenditure vs Covid Death Rate - 1-2
+
+GDP vs Health Expenditure - 2-3
+
+GDP per Capita vs Total Years of Schooling - 4
+
+GDP per Capita vs Tests per Thousand - 5-6
+
+Functioning of Government vs GDP per Capita - 6
+
+Tibble - Labour Force Differences - 6-7
+
+Boxplot - Change in Labour Force 2019 to 2020 - 8
+
+Unemployment Rate vs Percent Change(2019 to 2020) - 9
+
+2020 Labour Force vs Unemployment Rate - 10
+
+Labor Force Change in 2020 per Regime Type - 10
+
+Restrictions vs Rank by Country & Date - 11-12
+
+Gathering Restrictions vs New Cases - 12
+
+Stay at Home Requirements vs Percentage of New Cases - 13
+
+Stay at Home Requirements vs Percentage of New Cases in the US - 14
+
+CHI vs Total Case Percentage - 15-16
+
+CHI and Total Confirmed Cases Difference in the US - 16
+
+Confirmed Cases per Workplace Closure Score - 17
+
+Average Workplace Closure Score per Regime Type - 17
+
+Average GDP per Capita per Regime Type - 18
+
+Cases per Date per Regime Type - 18
+
+China’s Workplace Closure Score on Both Dates and Confirmed Cases - 18-19
+
+Happiness (Ladder Score) vs GDP per capita - 19
+
+Internet Usage vs. Happiness Score - 20
+
+Years vs Percentage by Country - 21
+
+Years vs Percentage Facet by Country - 22
+
+Boxplot: Years vs Percentage - 22-23
+
+Happiness Score vs Country - 23
+
+Tibble - shows the min, mean, max, median for Happiness Data - 23-24
+
+Conclusion - 24
+
+
+
+```{r echo = FALSE, warning = FALSE, message = FALSE, include = FALSE}
+covid_cases <- read_csv("https://covid.ourworldindata.org/data/ecdc/full_data.csv",
+                        col_types = cols(
+                          .default = col_double(),
+                          date = col_date(format =""),
+                          location = col_character()
+                        )) %>% filter(date== "2020-07-31" | date=="2020-10-01") %>%
+  filter(location=="Canada"| location=="United States"| location=="China"| location=="India"| location=="United Kingdom"| location=="Italy"| location=="Brazil"| location=="Argentina"| location=="Australia"| location=="New Zealand"| location=="Morocco"| location=="South Africa")
+
+covid_response <- read_csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest.csv",
+                           col_types = cols(
+                             .default = col_character(),
+                             Date = col_date(format = "%Y%m%d"),
+                             `E3_Fiscal measures` = col_double(),
+                             `E4_International support` = col_double(),
+                             `H4_Emergency investment in healthcare` = col_double(),
+                             `H5_Investment in vaccines` = col_double(),
+                             `C1_Flag` = col_logical(),
+                             `C2_Flag` = col_logical(),
+                             `C3_Flag` = col_logical(),
+                             'C4_Restrictions on gatherings' = col_double(),
+                             `C4_Flag` = col_logical(),
+                             `C5_Flag` = col_logical(),
+                             `C6_Flag` = col_logical(),
+                             `C7_Flag` = col_logical(),
+                             `E1_Flag` = col_logical(),
+                             `H1_Flag` = col_logical(),
+                             'ContainmentHealthIndex' = col_double()
+                           )) %>% filter(Date == "2020-07-31"|Date == "2020-10-01") %>%
+  filter(CountryName == "Canada"|CountryName == "United States"|CountryName == "China"|CountryName == "India"|(CountryName == "United Kingdom" &RegionName == "England")|CountryName == "Italy"|CountryName == "Brazil"|CountryName == "Argentina"|CountryName == "Morocco"| CountryName == "South Africa"|CountryName == "Australia"|CountryName == "New Zealand") #%>% group_by(CountryName)
+
+population <- read_tsv("POPULATION.csv") %>% 
+  filter((Country=="Canada"| Country=="United States"| Country=="China"| Country=="India"| Country=="United Kingdom"| Country=="Italy"| Country=="Brazil"| Country=="Argentina"| Country=="Australia"| Country=="New Zealand"| Country=="Morocco"| Country=="South Africa"))
+
+covid_tests <- read_csv("https://covid.ourworldindata.org/data/testing/covid-testing-all-observations.csv") %>% 
+  filter(Date=="2020-07-31"| Date=="2020-10-01") %>% 
+  filter(Entity=="Canada - tests performed"| Entity=="United States - tests performed"| Entity=="China - tests performed"| Entity=="India - tests performed"| Entity=="United Kingdom - tests performed"| Entity=="Italy - tests performed"| Entity=="Brazil - tests performed"| Entity=="Argentina tests performed"| Entity=="Australia - tests performed"| Entity=="New Zealand - tests performed"| Entity=="Morocco - tests performed"| Entity=="South Africa -tests performed")
+
+deathrate <- read_tsv("DEATHRATE.csv") %>% 
+  select(1:3) %>% 
+  filter((Country=="Canada"| Country=="United States"| Country=="China"| Country=="India"| Country=="United Kingdom"| Country=="Italy"| Country=="Brazil"| Country=="Argentina"| Country=="Australia"| Country=="New Zealand"| Country=="Morocco"| Country=="South Africa"))
+
+healthexp <- read_tsv("HEALTHEXP.csv") %>% 
+  separate('Current Health Expenditure', into=c("Current_Health_Expenditure", NA), sep="%") %>%
+  filter(Country=="Canada"| Country=="United States"| Country=="China"| Country=="India"| Country=="United Kingdom"| Country=="Italy"| Country=="Brazil"| Country=="Argentina"| Country=="Australia"| Country=="New Zealand"| Country=="Morocco"| Country=="South Africa")
+healthexp$Current_Health_Expenditure <-as.double(healthexp$Current_Health_Expenditure)/100
+
+gdppp <- read_tsv("GDPPP.csv", col_types= cols('GDP - PER CAPITA (PPP)' = col_number()))%>%
+  filter(Country=="Canada"| Country=="United States"| Country=="China"| Country=="India"| Country=="United Kingdom"| Country=="Italy"| Country=="Brazil"| Country=="Argentina"| Country=="Australia"| Country=="New Zealand"| Country=="Morocco"| Country=="South Africa") %>% 
+  arrange(desc(3))
+
+gdp_per_capita <- read_tsv("GDPPP.csv", col_types = cols(
+  Rank = col_integer(),
+  `GDP - PER CAPITA (PPP)` = col_number()
+  ))
+
+covid_testing <- read_csv("https://covid.ourworldindata.org/data/testing/covid-testing-all-observations.csv")
+
+#this function filters out the countries we didn't decide to include in our analysis
+filter_countries <- function(.) {
+  filter(., .$Country == "Canada" | .$Country == "United States" | .$Country == "India" | .$Country == "China" | (.$Country == "England" | .$Country == "UK" | .$Country == "United Kingdom") | .$Country == "Italy" | .$Country == "Brazil" | .$Country == "Argentina" | .$Country == "Morocco" | .$Country == "South Africa" | .$Country == "Australia" | .$Country == "New Zealand")
+}
+
+#this function filters only the selected dates where applicable
+filter_dates <- function(.) {
+  filter(., .$Date == "2020-07-31" | .$Date == "2020-10-01")
+}
+
+tidy_years <- function(.) {
+  filtered_years <- str_remove(.$`Date of Information`, " est.")
+  filtered_years <- parse_integer(filtered_years)
+  return(filtered_years)
+}
+
+country_names = str_replace_all(covid_testing$Entity, " - tests performed", "")
+covid_testing <- covid_testing %>% mutate(Entity = country_names) %>% select(-`Source URL`, -`Source label`, -Notes) %>% rename("Country" = "Entity") %>%
+  filter_countries() %>% filter_dates()
+
+gdp_per_capita <- gdp_per_capita %>% mutate(`Date of Information` = tidy_years(.)) %>% filter_countries() %>% filter(`Date of Information` >= 2015)
+
+democracy_index <- read_tsv("DEMOCRACYINDEX.csv", col_types = cols(
+  Rank = col_integer()
+  ))
+
+democracy_index <- democracy_index %>%
+  mutate(
+    `Change from last year: Score` = str_replace(`Change from last year: Score`, "Score: Increase ", "")
+  ) %>%
+  mutate(
+    `Change from last year: Score` = str_replace(`Change from last year: Score`, "Score: Decrease ", "-")
+  ) %>%
+  mutate(
+    `Change from last year: Score` = str_replace(`Change from last year: Score`, "Score: Steady", "0")
+  ) %>% rename("Change in Score" = `Change from last year: Score`) %>%
+   mutate(
+    `Change from last year: rank` = str_replace(`Change from last year: rank`, "Rank: Increase ", "")
+  ) %>%
+  mutate(
+    `Change from last year: rank` = str_replace(`Change from last year: rank`, "Rank: Decrease ", "-")
+  ) %>%
+  mutate(
+    `Change from last year: rank` = str_replace(`Change from last year: rank`, "Rank: Steady", "0")
+  ) %>% rename("Change in Rank" = `Change from last year: rank`) %>%
+  mutate(
+    `Change in Score` = as.double(`Change in Score`),
+    `Change in Rank` = as.double(`Change in Rank`)
+  ) %>%
+  filter_countries()
+
+laborforce <- read_tsv("LABORFORCE.csv",
+                       col_types = cols(
+                         .default = col_double(),
+                         `Country Name` = col_character(),
+                         `Country Code` = col_character()
+                       ))
+
+laborforce_clean <- laborforce %>%
+  filter(`Country Name` == "United States" | `Country Name` == "Canada" | `Country Name` == "United Kingdom" | `Country Name` == "Italy" | `Country Name` == "China" | `Country Name` == "India"|`Country Name` == "New Zealand"|`Country Name` == "Brazil"|`Country Name` == "South Africa" |`Country Name` == "Argentina"|`Country Name` == "Australia"|`Country Name` == "Morocco") %>% 
+  select("Country Name", "Country Code","2015","2016","2017","2018","2019","2020") %>%
+  arrange(`Country Name`)
+
+unemployment <- read_tsv("UNEMP.csv")
+
+unemployment_filtered<- unemployment %>%
+  filter(Country == "United States" | Country == "Canada" | Country == "United Kingdom" | Country == "Italy" | Country == "China" | Country == "India"|Country == "New Zealand"|Country == "Brazil"|Country == "South Africa"|Country == "Morocco"|Country == "Argentina"|Country == "Australia") %>%
+  rename( "UmemploymentRate" = "(%)", "Date for Unemp." = "Date of Information")
+
+labor_force <- read_tsv("LABORFORCE.csv") %>% gather(c("1960":"2020"), key = "Year", value = "LaborForce") %>%
+  mutate(Year = as.integer(Year), LaborForce = as.integer(LaborForce)) %>% 
+  rename("Country" = "Country Name") %>% 
+  filter_countries() %>%
+  filter(Year >= 2015) %>%
+  spread(key = "Year", value = "LaborForce")
+
+change <- c()
+
+for (i in 3:7) {
+  change = c(change, map2_dbl(labor_force[[i]], labor_force[[i+1]], ~((.y-.x)/.y)*100))
+}
+
+deltas <- tibble(
+  "Country" = labor_force$Country,
+  "2015-2016" = change[1:12],
+  "2016-2017" = change[13:24],
+  "2017-2018" = change[25:36],
+  "2018-2019" = change[37:48],
+  "2019-2020" = change[49:60]
+) %>% gather(c("2015-2016":"2019-2020"), key = "Change Year", value = "Percent Change")
+
+covid_response_e <- read_csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest.csv",
+                           col_types = cols(
+                             .default = col_character(),
+                             Date = col_date(format = "%Y%m%d"),
+                             `E3_Fiscal measures` = col_double(),
+                             `E4_International support` = col_double(),
+                             `H4_Emergency investment in healthcare` = col_double(),
+                             `H5_Investment in vaccines` = col_double(),
+                             `C1_Flag` = col_logical(),
+                             `C2_Flag` = col_logical(),
+                             `C3_Flag` = col_logical(),
+                             `C4_Flag` = col_logical(),
+                             `C5_Flag` = col_logical(),
+                             `C6_Flag` = col_logical(),
+                             `C7_Flag` = col_logical(),
+                             `E1_Flag` = col_logical(),
+                             `H1_Flag` = col_logical()
+                           ))%>%
+filter(Date == "2020-07-31" | Date == "2020-10-01")%>% filter (CountryName == "Canada"| CountryName == "United States"|CountryName == "China"|CountryName == "India"|(CountryName == "United Kingdom"&RegionName == "England")|CountryName == "Italy"|CountryName == "Brazil"|CountryName == "Argentina"|CountryName == "Australia"|CountryName == "New Zealand"|CountryName == "Morocco"|CountryName == "South Africa")%>% group_by(CountryName) %>%select(CountryName,Date,"C1_School closing","C2_Workplace closing","C3_Cancel public events", "C4_Restrictions on gatherings", "C5_Close public transport","C6_Stay at home requirements","C8_International travel controls")
+
+covid_response2 <- covid_response_e%>%
+  gather("C1_School closing","C2_Workplace closing","C3_Cancel public events", "C4_Restrictions on gatherings", "C5_Close public transport","C6_Stay at home requirements","C8_International travel controls", key = "Restrictions", value = "Rank", convert = TRUE)
+
+response_cases<- left_join(covid_cases, covid_response,by=c("date"="Date", "location"="CountryName")) %>%
+  select(location, date, new_cases, 'C4_Restrictions on gatherings')
+
+response_cases<-rename(response_cases,c("C4_gatherings_restrictions"="C4_Restrictions on gatherings"))
+
+response_cases<- response_cases %>% 
+  drop_na()
+response_cases$C4_gatherings_restrictions<-as.double(response_cases$C4_gatherings_restrictions)
+
+response_cases_AVG<-response_cases %>%
+  group_by(location, C4_gatherings_restrictions) %>% 
+  summarise(AVG_nc=mean(new_cases))
+
+gov_responses <- read_csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest.csv", col_types = cols(
+  Date = col_date(format = "%Y%m%d"),
+  RegionName = col_character(),
+  RegionCode = col_character(),
+  C1_Flag = col_logical(),
+  C2_Flag = col_logical(),
+  C3_Flag = col_logical(),
+  C4_Flag = col_logical(),
+  C5_Flag = col_logical(),
+  C6_Flag = col_logical(),
+  C7_Flag = col_logical(),
+  E1_Flag = col_logical(),
+  H1_Flag = col_logical(),
+  H6_Flag = col_logical()
+))
+
+gov_responses <- gov_responses %>% rename("Country" = CountryName) %>% filter_countries() %>% filter_dates()
+
+happiness_score <- read_tsv("WorldHappinessReport2020-Score.csv")
+
+happiness_score <- happiness_score %>% filter_countries()
+
+internetuser <- read_csv("INTERNETUSER-comma.csv")%>% filter (Country == "Canada"| Country == "United States"|Country == "China"|Country == "India"|Country == "United Kingdom"|Country == "Italy"|Country == "Brazil"|Country == "Argentina"|Country == "Australia"|Country == "New Zealand"|Country == "Morocco"|Country == "South Africa"|Country == "England")#just filtering out the rows not needed
+
+
+internetuser2 <- internetuser%>%
+  gather('2015', '2016', '2017', '2018', '2019', '2020', key = "Years", value = "percentage", convert = TRUE)
+
+happinessscore <- read_csv("WorldHappinessReport2020-Score2.csv")%>% filter (Country == "Canada"| Country == "United States"|Country == "China"|Country == "India"|Country == "United Kingdom"|Country == "Italy"|Country == "Brazil"|Country == "Argentina"|Country == "Australia"|Country == "New Zealand"|Country == "Morocco"|Country == "South Africa"|Country == "England")%>%select(Country,"Ladder score")%>%select(Country,"Ladder score")
+
+happinessscore2 <- happinessscore%>%
+  gather("Ladder score", key = Ladder_score, value = "Happiness_score", convert = TRUE)#organizes the data set by putting some columns into a new column
+```
+
+
+The Covid-19 pandemic has turned the world upside down and has greatly impacted the lives of everyone. Many are having to deal with the ramifications that come with the pandemic whether it be to their personal, social, or work lives. This report will analyze the impact Covid-19 has had on the factors, Health, self-perception, Employment, and Politics. The pandemic has affected the factors mentioned above greatly. Ever since the beginning of the pandemic, the self-perception of people has begun to decline. The reasoning behind the sudden drop in happiness, will be analyzed throughout the report using the World Happiness data, the Internet Usage data, and the Covid Response data set. Health was also hit hard by the pandemic in terms of healthcare, and the health of the public. The data sets used in the report to analyze how the Health factor was affected by Covid-19 are Covid Response, Covid Cases, Death Rate, Life Expectancy, Health Expenditure, GDP per capita, and Population. The factor Employment was also impacted by the pandemic since many people began to lose their jobs, and the way Covid-19 may have impacted Employment will be discussed in the report using the data sets, Unemployment, Labor Force, Schooling Expectancy, GDP per capita, and Covid Cases. The last factor being discussed in this report is Politics, and politics were greatly affected since governments were expected to figure out how to deal with Covid-19. This is being analyzed in the report with the data sets, Covid Testing, Democracy Index, GDP per capita, Covid Response, and Labor Force. As this global pandemic has been in effect since early 2020, everyday we see a rise or drop in new cases, deaths, and recoveries. There has been a change in government policies, restrictions, Covid-19 testing, and many other changes in this new world now revolving around this virus. To analyze its effects, the two dates that were focused upon were July 31, 2020 and October 1, 2020. These specific dates were chosen to examine different stages of the pandemic. As the number of cases began to settle down in many countries in the middle of the year, July would be a date to analyze as the spread of Covid-19 was at a low point. To compare, October 1, 2020 was chosen as this was a time when the spread of the virus began to pick up. These two dates allow for a comparison of different stages of the virus’ progression.
+
+
+```{r echo = FALSE, warning = FALSE, message=FALSE, warning=FALSE}
+#date= 2020-07-31
+exp_total_cd<- left_join(healthexp, covid_cases, by=c("Country"="location"))
+
+exp_total_cd1<-exp_total_cd %>% 
+  filter(date=="2020-07-31") %>% 
+  mutate(covid_deathrate=(total_deaths/total_cases)*100, health_exp=Current_Health_Expenditure*100) %>% 
+  select(Country, health_exp, covid_deathrate)
+
+DR<-lm(exp_total_cd1$covid_deathrate~exp_total_cd1$health_exp)
+
+cor(exp_total_cd1$health_exp, exp_total_cd1$covid_deathrate)
+
+#date= 2020-10-01
+exp_total_cd2<- left_join(healthexp, covid_cases, by=c("Country"="location")) %>%
+  filter(date=="2020-10-01") %>% 
+  mutate(covid_deathrate2=(total_deaths/total_cases)*100, health_exp=Current_Health_Expenditure*100) %>% 
+  select(Country, health_exp, covid_deathrate2)
+
+DR2<-lm(exp_total_cd2$covid_deathrate2~exp_total_cd2$health_exp)
+
+cor(exp_total_cd2$health_exp, exp_total_cd2$covid_deathrate2)
+
+rsquare(DR, exp_total_cd1)
+rsquare(DR2, exp_total_cd2)
+
+covid_cases %>%
+  mutate(death_rate = (total_deaths/total_cases)*100) %>%
+  full_join(healthexp, by = c("location" = "Country")) %>%
+  ggplot(aes(x = Current_Health_Expenditure, y = death_rate)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~date, nrow = 2)+
+  ggtitle("Death Rate vs Health Expenditure by Date")
+
+```
+
+To explore the relationship between the health expenditure and the covid death we looked at the healthexp date set and the covid_cases data set. The Covid death rate is the percentage of total Covid deaths to the total Covid cases in a country. The health expenditure is the percentage of a country's GDP that the government spends on health. As we examine the graph, we can see that the data is fairly spread out. We would predict that if a country has a greater health expenditure, the death rate would be lower. With more access to health care resources, we would expect that those who were infected by the virus would have a higher chance of recovering and not contribute to the total deaths as a result from having the virus. 
+
+We can interpret from the graphs above that the data is fairly spread out and not hold an obvious trend. Looking at the first graph which displays the data from July 31, 2020, it appears that the countries with low health expenditures did not see high death rates. We would also expect a negative correlation, however the model suggests that as the health expenditure increases, the death rate increases with it. Based on this observation, we can view the health expenditure to be the response variable rather than the death rates. As the death rates rise in the country, the governments then require a larger spending on public and private health care. With a r-squared value of 0.0335738, the regression model is extremely weak as it only explains approximately 3% of the variation. The spread of the data may be an effect of the outdated data we received. As the health expenditure for each country was the calculated amount from the yer 2015, the effects of Covid-19 had not yet been in effect. If we were to examine more time relevant values, we might see a stronger correlation between the health expenditure of each country and its Covid death rates.
+
+Similarly, the graph referring to the date of October 1, 2020, demonstrates a similar relationship between the health expenditure and the Covid death rate as the first graph. We can see that the points on the graph are very spread out and do not show an obvious trend, and the majority of the points fall below the regression model. With a r-squared value of 0.02795519, we can state that this model is an even weaker representation of the data as it only accounts for the explanation of approximately 2% of the data. Therefore we cannot make any strong conclusions about the relationship between these two variables. 
+
+```{r echo = FALSE, message = FALSE, warning = FALSE}
+gdp_hex<-left_join(gdppp, healthexp, by="Country")
+
+gdp_hex_cases<-left_join(gdp_hex, covid_cases, by=c("Country"="location")) %>%
+  filter(date=="2020-07-31") %>% 
+  select(Country, Year, 'GDP - PER CAPITA (PPP)', Current_Health_Expenditure, total_cases, total_deaths) %>% 
+  mutate("Current_Health_Expenditure(%)"=Current_Health_Expenditure*100, "covid_death_rate(%)"=(total_deaths/total_cases)*100)
+gdp_hex_cases
+
+ggplot(gdp_hex_cases)+
+  geom_point(mapping=aes(x=`GDP - PER CAPITA (PPP)`,y=Current_Health_Expenditure, color=Country))+
+  geom_smooth(mapping=aes(x=`GDP - PER CAPITA (PPP)`,y=Current_Health_Expenditure))+
+  ggtitle("GDP vs Health Expenditure(2015)")
+
+cov(gdp_hex_cases$`GDP - PER CAPITA (PPP)`, gdp_hex_cases$`Current_Health_Expenditure(%)`)
+cor(gdp_hex_cases$`GDP - PER CAPITA (PPP)`, gdp_hex_cases$`Current_Health_Expenditure(%)`)
+
+cor(gdp_hex_cases$`GDP - PER CAPITA (PPP)`,gdp_hex_cases$`covid_death_rate(%)`)
+```
+
+Health expenditure could be a large factor that contributes to the health and well being of a population of a country. If a country does not have the resources or access to good quality health care, it could strongly relate to the number of recoveries, deaths, and cases in a country due to Covid-19. We would assume the GDP of a country would have an effect on the health expenditure. There seems to be a strong correlation between the GDP and the health expenditure of a country, with a correlation coefficient of 0.8369039. Countries with high GPDs can afford to put more money into the health in the country, which is why we see a positive relationship here. In the scatter plot above we can see upwards trending data with only the 12 countries of focus. If we added in more countries we would most likely see a stronger correlation between the two variables. Let us see what factors affect GDP per capita, consequently affecting a country's health expenditure.
+
+```{r, fig.width=8, fig.height=4, fig.align = "center", echo = FALSE, message = FALSE}
+schooling <- read_tsv("SCHOOLINGEXPECTANCY.csv")
+
+
+schooling_clean <- schooling %>% filter(key != "note")  %$%
+  tibble(
+    "Country" = .$value[seq(1, 880, 5)],
+    "Total" = .$value[seq(2, 881, 5)],
+    "Male" = .$value[seq(3, 882, 5)],
+    "Female" = .$value[seq(4, 883, 5)],
+    "Year" = .$value[seq(5, 884, 5)]
+  ) 
+
+schooling_gdppp <- left_join(gdppp,schooling_clean, by = "Country") %>% filter(Country == "United States" | Country == "Canada" | Country == "United Kingdom" | Country == "Italy" | Country == "China" | Country == "India"|Country == "New Zealand"|Country == "Brazil"|Country == "South Africa"|Country == "Australia"|Country == "Argentina"|Country == "Morocco")%>%
+  mutate(Total = str_remove_all(Total, "years")) #removing the "year" after each number in this column
+#schooling_gdppp
+
+schooling_gdppp$Total <- as.numeric(schooling_gdppp$Total) #converting the "Total" column to a numeric value from character
+
+schooling_gdppp_df <- as.data.frame(schooling_gdppp) #converting schooling_gdppp to data frame from tibble
+
+#plotting GDP per capita vs. total years of schooling
+ggplot(data = schooling_gdppp_df,mapping=aes(x = Total, y = `GDP - PER CAPITA (PPP)`)) +
+  geom_point(mapping=aes(colour = Country)) +
+  geom_smooth(method = "lm", se = FALSE) +
+  ggtitle("GDP Per Capita vs. Total Years of Schooling")+ #creating title for plot
+  theme(plot.title = element_text(hjust = 0.5)) #centering title
+```
+
+  This graph shows the relationship between the two variables GDP per capita, and the total years of schooling received on average by the population of various countries. There appears to be a moderate positive correlation between the two because as the number of years for education increases, so does the GDP per capita. Countries with citizens who have been in school longer and have received more education, tend to earn more income, compared to countries whose citizens have been in school for fewers years. The United States has the total years of schooling received by the average American is 16, meaning most of the population attends college or university. Their GDP per capita is one of the highest in this specific group of countries at $59,500. When comparing this to a country like Australia, it is surprising to see that, even though the average Australian tends to have a higher education than the average American, the GDP per capita of Americans is much higher. Therefore, by comparing the GDP per capita and the total years of schooling, it is clear that some countries do not perfectly follow this trend as seen by Australia and the United States. The GDP per capita, and the number of covid-tests conducted will be compared in the next graph.
+
+  
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+gdp_per_capita %>%
+  full_join(covid_testing) %>%
+  ggplot(aes(x = `GDP - PER CAPITA (PPP)`, y = `Cumulative total per thousand`)) +
+  geom_point(size = 4) +
+  geom_smooth(method = "lm", se = FALSE) +
+  ggtitle("Tests per Thousand vs GDP Per Capita")
+
+m <- gdp_per_capita %>%
+  full_join(covid_testing) %>%
+  lm(.$`Cumulative total per thousand` ~ .$`GDP - PER CAPITA (PPP)`, .)
+
+summary(m)
+```
+
+In the graph above, we see that as the GDP per capita increases, the number of cumulative total tests per thousand increases as well, suggesting that higher GDP per capita countries can do more tests per thousand people. The relation has a multiple R-squared value of 0.6, which means that the model is capturing about 60% of the data, which is pretty good. Relating back to the fact that education positively correlates with GDP per capita, countries with higher education are more likely to have higher GDP per capitas and therefore run a higher number of tests, allowing them to gauge the spread of COVID-19 in their countries more accurately. This also backs up the plot showing the relation between GDP per capita and the health expenditure of a country, as a higher GDp per capita would result in a higher health expenditure and therefore result in a country being able to perform more tests.
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+democracy_index %>%
+  full_join(gdp_per_capita, by = "Country") %>%
+  ggplot(aes(x = `Functio­ning of govern­ment`, y = `GDP - PER CAPITA (PPP)`)) +
+  geom_point(size = 4) +
+  ggtitle("GDP Per Capita vs Functioning of Government Score")
+```
+
+Here we see a rough trend where the rating of the government functioning score is directly related to the gdp per capita. That is to say, a government with a higher functioning score has a higher gdp per capita, which directly ties into the discussion above. Therefore, it can be said with some certainty that better functioning governments were able to handle the spread of COVID in their countries more effectively compared to countries with lower functioning scores, as they were able to  run more tests, gauging the spread of the virus, which could allow them to control it more effectively. Now let's look at another possible factor affecting GDP per capita: the labor force and unemployment rates of a country.
+
+```{r echo = FALSE, message = FALSE, warning = FALSE}
+#using for loop to calculate the difference in the number of workers to find change in workers yearly from 2015 to 2020
+output <- vector("integer", 5)
+for (i in seq_along(laborforce_clean$`Country Name`)){
+  Country_2015_2016 <- laborforce_clean$`2016`-laborforce_clean$`2015`
+  Country_2016_2017 <- laborforce_clean$`2017`-laborforce_clean$`2016`
+  Country_2017_2018 <- laborforce_clean$`2018`-laborforce_clean$`2017`
+  Country_2018_2019 <- laborforce_clean$`2019`-laborforce_clean$`2018`
+  Country_2019_2020 <- laborforce_clean$`2020`-laborforce_clean$`2019`
+}
+
+#Country_2015_2016
+#Country_2016_2017
+#Country_2017_2018
+#Country_2018_2019
+#Country_2019_2020
+
+#creating tibble with the difference in number of workers yearly, that was calculated with the for loop
+laborforce_difference <- tibble(`Country Code` = laborforce_clean$`Country Code`, Country = laborforce_clean$`Country Name`, '2015 to 2016' = Country_2015_2016, '2016 to 2017' = Country_2016_2017,'2017 to 2018' = Country_2017_2018, '2018 to 2019' = Country_2018_2019,'2019 to 2020' = Country_2019_2020)
+
+laborforce_difference %>% 
+  select(-c(Country, `2015 to 2016`))
+  
+```
+
+```{r, echo = FALSE, message = FALSE, include = FALSE}
+
+#creating tibble so that the differences all lie in the rows instead of the columns and the country names become the column names
+
+#this is being done to help calculate the average change in workers using the rows, for each country 
+avg_tibble <- tibble(Difference = c('2015 to 2016', '2016 to 2017', '2017 to 2018', '2018 to 2019'),
+                     
+Argentina = c(laborforce_difference$`2015 to 2016`[[1]],laborforce_difference$`2016 to 2017`[[1]],laborforce_difference$`2017 to 2018`[[1]],laborforce_difference$`2018 to 2019`[[1]]), 
+
+Australia = c(laborforce_difference$`2015 to 2016`[[2]],laborforce_difference$`2016 to 2017`[[2]],laborforce_difference$`2017 to 2018`[[2]],laborforce_difference$`2018 to 2019`[[2]]), 
+
+Brazil = c(laborforce_difference$`2015 to 2016`[[3]],laborforce_difference$`2016 to 2017`[[3]],laborforce_difference$`2017 to 2018`[[3]],laborforce_difference$`2018 to 2019`[[3]]), 
+
+Canada = c(laborforce_difference$`2015 to 2016`[[4]],laborforce_difference$`2016 to 2017`[[4]],laborforce_difference$`2017 to 2018`[[4]],laborforce_difference$`2018 to 2019`[[4]]), 
+
+China = c(laborforce_difference$`2015 to 2016`[[5]],laborforce_difference$`2016 to 2017`[[5]],laborforce_difference$`2017 to 2018`[[5]],laborforce_difference$`2018 to 2019`[[5]]),
+
+India = c(laborforce_difference$`2015 to 2016`[[6]],laborforce_difference$`2016 to 2017`[[6]],laborforce_difference$`2017 to 2018`[[6]],laborforce_difference$`2018 to 2019`[[6]]), 
+
+Italy =c(laborforce_difference$`2015 to 2016`[[7]],laborforce_difference$`2016 to 2017`[[7]],laborforce_difference$`2017 to 2018`[[7]],laborforce_difference$`2018 to 2019`[[7]]),
+
+Morocco = c(laborforce_difference$`2015 to 2016`[[8]],laborforce_difference$`2016 to 2017`[[8]],laborforce_difference$`2017 to 2018`[[8]],laborforce_difference$`2018 to 2019`[[8]]),
+
+`New Zealand` = c(laborforce_difference$`2015 to 2016`[[9]],laborforce_difference$`2016 to 2017`[[9]],laborforce_difference$`2017 to 2018`[[9]],laborforce_difference$`2018 to 2019`[[9]]),
+
+`South Africa` = c(laborforce_difference$`2015 to 2016`[[10]],laborforce_difference$`2016 to 2017`[[10]],laborforce_difference$`2017 to 2018`[[10]],laborforce_difference$`2018 to 2019`[[10]]),
+
+`United Kingdom` = c(laborforce_difference$`2015 to 2016`[[11]],laborforce_difference$`2016 to 2017`[[11]],laborforce_difference$`2017 to 2018`[[11]],laborforce_difference$`2018 to 2019`[[11]]),
+
+`United States` = c(laborforce_difference$`2015 to 2016`[[12]],laborforce_difference$`2016 to 2017`[[12]],laborforce_difference$`2017 to 2018`[[12]],laborforce_difference$`2018 to 2019`[[12]]))
+avg_tibble
+
+avg_tibble_formap <- avg_tibble%>%
+  select(-c(Difference))
+
+#using mapping function to calculate average change in workers yearly for each country
+AVG_workers <- map_dbl(avg_tibble_formap, mean)
+
+```
+  
+  Based on the data in the table above, the majority of the countries have a smaller increase in labor force workers from the years 2019 to 2020 when compared with other years.  In the table above, the differences of the labour force from 2015 to 2016 are not shown because it could not be displayed due to the size of the table, but the differences were calculated and are referred to in this section. For example, when focusing on Canada, the difference between the amount of workers in the years 2019 and 2020 is 128,834 workers. This number is a large amount, however when compared to previous years, it is lower than the number of workers that are usually added to the labour force in Canada per year. For previous years in Canada, the increase of workers has been, from 2015 to 2016, an increase of 208,587 workers, 2016 to 2017, an increase of 276,692 workers, 2017 to 2018, an increase of 180,314 workers, and lastly 2018 to 2019, an increase of 238,929 workers. These numbers clearly show that the least amount of increase in workers was from 2019 to 2020. This is due to the Covid-19 pandemic. Various parts of Canada went into lockdown in March 2020, and again in November 2020. Many workers lost their jobs and many companies started hiring fewer workers. The total number of cases in Canada according to the covid cases data on July 31, 2020 are 115,785, and on October 1, 2020 are 158,758. These numbers are fairly high, but in comparison with the Canadian population of 37,694,085, they may not seem as extreme when compared to other countries.
+
+  Something interesting about this data is that China has negative numbers for almost every difference calculated for the number of workers from various years. This is particularly interesting since China has a relatively large workforce. Between the years 2019 to 2020, China lost the most amount of workers as seen in the intervals calculated. China was the first country with Covid-19 cases, which could explain the dramatic decrease in workers from 2019 to 2020, however it does not explain the decrease in workers for all the other years. There is no data given for this project that could explain why the labour force in China keeps decreasing. Like many countries in the world, China went into lockdown as well when the Covid-19 cases were rapidly increasing. On July 31, 2020, the number of covid cases in China were 87,489, with 276 new cases. On October 1, 2020 the number of Covid-19 cases in China according to the data are 90,528, however there are no new cases reported. Since China was one of the first countries to face the disastrous effects of the virus, according to the data, it makes sense that rather than an increase in workers, there was a decrease. 
+  
+  Every single country shown in the table had a lower increase in their labor force, in the years 2019 to 2020, when compared with either the previous years all the way back to 2015, or just the years prior (2018 to 2019). However there was one country that did not follow this common trend, India. India was and still is being greatly impacted by the virus. This is shown by the number of total cases on July 31, 2020 which were 1,638,870, with the new cases being 55,078, and on October 1, 2020 with total cases being 6,312,584, and new cases being 86,821. Clearly, with the number of cases being in the millions, it would be expected that India's labour force would be seeing a massive decrease. However it seems to have increased according to the data. From 2015 to 2018, the number of workers added to the labour force decreased yearly. From 2017 to 2018 the difference in the number of workers was 3,390,291, and compared to prior years, it was a smaller increase. However, suddenly, in 2018 to 2019 and 2019 to 2020, there was a large increase, with the number of workers being 6,639,405 and 6,733,726, respectively. The reason for this is based on the Covid-19 data, and the labour force data is unknown and would require further analysis from other data.
+
+  To further show that most countries had a smaller increase in their labour force compared to previous years, the mean of the change in the labour force can be analyzed for each country. Argentina has an average increase of 353,032 workers, from the years 2015 to 2019. The amount of increase for the labour force from 2019 to 2020 was 204,754 workers, which is significantly lower than the mean. Since the increase in workers is below the average, it is evident that they have an increase of fewer workers in 2020, potentially due to Covid-19. Something interesting about one of the countries is that Morocco actually had a smaller increase in their labour force from 2019 to 2020 compared to some previous years, however the amount of the increase is still larger than the average. The average yearly increase in workers for Morocco since 2015 to 2019 is 62,398.25 workers. However the increase in workers from 2019 to 2020 was 136,201, which is well over the mean. By further analysis, it seems reasonable to say that the data may be either skewed, or Morocco faced some irregularities in terms of their labor force. This is because, from 2015 to 2016, and 2016 to 2017, Morocco actually saw a decrease in their labor force as the change in workers was negative for those years at -36,927 and -37,975, respectively. But then from 2017 onwards, they saw a major increase with the labour force increasing by over 100,000 workers. The reason the mean may be below the change in the labor force from 2019 to 2020, may be since they were losing workers in the years 2015 to 2017, and then suddenly had an increase from 2017 onwards. It can still be assumed that the lower increase in workers from 2019 to 2020 was due to the pandemic. The total cases in Morocco on July 31, 2020 were 23,259, and on October 1, 2020 were 123,653. The total population of Morocco that was last recorded in 2013, is 33,008,150, so these number of cases may not seem that bad, but still did potentially have an impact on the labour force there.
+
+
+```{r, fig.width=8, fig.height=4, fig.align = "center", echo = FALSE, message = FALSE, warning = FALSE}
+#plotting a boxplot showing the spread of the data for the change in workers from 2019 to 2020
+ggplot(data = laborforce_difference) +
+  geom_boxplot(mapping = aes(x = `2019 to 2020`)) +
+  ggtitle("Change in Labour Force for Various Countries (2019 to 2020)") + #displaying title for boxplot
+  theme(plot.title = element_text(hjust = 0.5)) #centering title
+```
+ This boxplot shows the change in workers from 2019 to 2020 for the specific countries that have been chosen for this report. By looking at the plot it is evident that there are two outliers. The one to the far right is India, as the country had an increase of workers by 6,733,726. The one to the far left is China, as the country saw a decrease in workers by 2,374,017. Both of these countries were analyzed previously as well, and this boxplot proves that these countries stand out and are facing a major increase and decrease in workers compared to other countries. The data is skewed to the right as the whisker on the right is slightly longer. This is most likely due to the fact that India, the outlier on the right, is stretching the data in that direction. The median of the data seems to also be on the lower end, and the reason for this may be due to the fact that only a few countries are being analyzed here. If a few more countries were analyzed the spread of the data may even out slightly.
+ 
+ 
+```{r, echo = FALSE, message = FALSE, include = FALSE}
+change<-c()
+
+#calculating growth rate (percent change) using the differences calculated for the change in workers yearly
+for (i in 3:7){
+  change = c(change, map2_dbl(laborforce_clean[[i]],laborforce_clean[[i+1]], ~((.y-.x)/.y)*100))
+}
+
+GrowthRate <- tibble(
+  "Country" = laborforce_clean$`Country Name`,
+  "2015-2016" = change[1:12],
+  "2016-2017" = change[13:24],
+  "2017-2018" = change[25:36],
+  "2018-2019" = change[37:48],
+  "2019-2020" = change[49:60]
+) %>% gather(c("2015-2016":"2019-2020"), key = "Change Year", value = "Percent Change")
+
+GrowthRate_unemployment <- left_join(GrowthRate, unemployment, by = "Country") %>%
+  rename("Unemployment Rate" = "(%)") %>%
+  filter(`Change Year` == "2019-2020")
+#GrowthRate_unemployment
+
+cor(GrowthRate_unemployment$`Percent Change`, GrowthRate_unemployment$`Unemployment Rate` ) #calculating correlation between percent change and unemployment rate
+
+GrowthRateMODEL <- lm(GrowthRate_unemployment$`Unemployment Rate`~`Percent Change`, data = GrowthRate_unemployment)
+#creating linear model for percent change and unemployment rate
+```
+
+
+```{r, fig.width=8, fig.height=4, fig.align = "center", echo = FALSE, message = FALSE, warning = FALSE}
+#graphing percent change and unemployment rate
+ggplot(data = GrowthRate_unemployment) +
+  geom_point(mapping=aes(x = `Percent Change`, y =`Unemployment Rate`, colour = Country)) +
+  geom_abline(intercept = 5.448, slope = 5.232) + #plotting linear model calculated above
+  ggtitle("Unemployment Rate vs. Percent Change (2019 to 2020)")+ #displaying title on plot
+  theme(plot.title = element_text(hjust = 0.5)) #centering title
+
+```
+
+
+  Now, this scatterplot shows the relationship between the unemployment rate for the various countries that have been chosen for this report, and the growth rate for their labor forces, specifically from the years 2019 to 2020. There appears to be a moderate linear correlation between the variables. As the percent change (change in the number of workers) increases, so does the unemployment rate. However it is important to point out that the unemployment data is from 2017, so the correlation here may not be valid in terms recognizing a trend between the two variables. Although there seems to be a slight correlation between the unemployment rate, and the percent change, it may just be a coincidence. The hypothesis is that in 2020, the unemployment rate would increase, as the number of workers would decrease. However, instead of the number of workers decreasing, it actually increased, but by fewer workers than in previous years as established earlier on in the report. On this plot, there is one country that is directly on the line of best fit, and that country is China. That means that China directly follows this trend whereas the other countries are scattered around the line of best fit. China actually has a negative percent change, meaning that their labour force decreased in 2020. Being directly on the line would mean that since they lost workers, their unemployment rate would increase. However just by looking directly at the graph, it seems that it is still a fairly low unemployment rate (3.9%). China being directly on the line may just be another coincidence. An outlier on the plot is South Africa, since it is very far away from the line of best fit. South Africa's labour force seems to have increased by 1.82299877% and has an unemployment rate of 27.5%, the highest from the countries shown in the plot. A potential reason it may be an outlier is that, because they have a high unemployment rate, they may be trying to boost their labour force, which would explain why they also have a higher percentage change in their labour force compared to other countries.
+
+```{r, echo = FALSE, message = FALSE} 
+
+#combining labour force and unemployment data and filtering it for specific countries
+unemployment_laborforce <- left_join(unemployment_filtered, laborforce_clean, by = c("Country"="Country Name")) %>%
+  filter(Country == "United States" | Country == "Canada" | Country == "United Kingdom" | Country == "Italy" | Country == "China" | Country == "India"|Country == "New Zealand"|Country == "Brazil"|Country == "South Africa"|Country == "Argentina" | Country == "Australia" | Country == "Morocco") 
+#unemployment_laborforce
+
+ cor(unemployment_laborforce$`2020`, unemployment_laborforce$UmemploymentRate) #determining correlation coefficient for labour force data for 2020 and unemployment rate
+```
+  
+```{r, fig.width=8, fig.height=4, fig.align = "center", echo = FALSE, message = FALSE, warning = FALSE}
+#plotting employment rate and labour force data for 2020
+ggplot(data=unemployment_laborforce) +
+  geom_point(mapping=aes(x= UmemploymentRate, y=`2020`, colour = Country))+
+  scale_y_continuous(breaks = c(100000000,200000000,300000000,400000000,500000000,600000000,700000000,800000000)) + #changing y axis
+  geom_smooth(mapping=aes(x= UmemploymentRate, y=`2020`), method = "lm", se = FALSE) +
+  ggtitle("Labour Force Size (2020) vs. Unemployment Rate")+ #creating title for plot
+  xlab("Unemployment Rate")+ylab("Labour Force (2020)")+ #creating labels for x and y axis
+  theme(plot.title = element_text(hjust = 0.5)) #centering title for plot
+```
+
+  
+  This plot portrays the unemployment rate versus the size of the labour force in 2020, for the countries shown in the legend on the right. The reason this plot was created is that the prediction was that there may be a correlation between the labour force of 2020 specifically, and the unemployment rate in various countries. Since the unemployment rate in various countries rose due to the pandemic, the assumption was that the number of workers in each country for the labor force would decrease. However there appears to be a weak, negative correlation. This is evident just by looking at the scatterplot, but also because the correlation coefficient is -0.2937653. Now, since this is a weak correlation, it is not possible to make any solid analysis, but there is still a slight correlation between the two variables. As the unemployment rate increases, the number of labor force workers decreases, according to this graph. The reason there may be a weak correlation here, is because the unemployment data is from the year 2017. A lot has changed since 2017 due to the pandemic, so comparing this old data with the 2020 data on labour force, does not give any meaningful information. If the unemployment data was more recent, preferably from July 2020, which is when the labour force data was collected, there may be a stronger, negative relationship between the two variables, since the unemployment rate would be increasing, but the number for the labour force would be decreasing. Moving forward, we can analyze the labor force increase from 2019 to 2020 for different government types.
+
+```{r echo = FALSE, message = FALSE, warning = FALSE}
+deltas %>%
+  filter(`Change Year` == "2019-2020") %>%
+  full_join(democracy_index) %>%
+  group_by(`Regime type`) %>%
+  summarise(avg_change_force = mean(`Percent Change`, na.rm = TRUE))
+```
+
+Let's start by looking at the labor force increases from 2019 to 2020 per government type. It seems like the hybrid regimes had the greatest net increase, followed by the flawed democracies, then the full democracies and finally the authoritarian regimes which had a net decrease in labor force. Some possible factors affecting the labor force increases for the government types could be what policies they are enforcing to control the spread of COVID-19.
+
+```{r fig.width=12,fig.height=6, echo=FALSE, message = FALSE}
+covid_response2%>%
+group_by(Rank, Restrictions) %>% #grouping by rank and restrictions
+ggplot(mapping = aes(x = Rank, y = Restrictions))+
+  geom_point(mapping = aes(color = Date),alpha = 0.3)+
+  facet_wrap(~CountryName)+#plotting the rank and restrictions on the xaxis and yaxis and faceting by countries with shaded values in date
+  ggtitle("Restrictions vs Rank by Country & Date") + 
+  theme(plot.title = element_text(hjust = 0.5)) #centering title on scatted plot
+```
+
+This graph shows the restrictions and the rank separated by country with the shaded points representing the dates of roughly two months. The rank range depends on the restriction considering the school closing, workplace closing, and stay at home requirements restrictions have a range from 0-3, 0 meaning there are no restrictions, 1 meaning the government recommends closing the schools, workplace, and for people to stay home, 2 meaning only some levels and sectors are required to close down and require people to stay home unless for essential reasons (such as grocery shopping), and 3 meaning closing is required for all levels, sectors (in terms of workplace this would not affect grocery stores, doctors, and other essential workplaces), and for people to stay at home with limited reasons to leave their homes (such as only able to leave once a week). The rank range for canceling public events and closing public transport is from 0-2 where 0 represents no restrictions, 1 meaning the government recommends for people to cancel events and close public transport, 2 represents the government requires canceling events and closing public transport. The rank range for restrictions on gatherings and international travel controls is from 0-4 where 0 represents no restrictions, 1 represents restrictions upon large gatherings (no more than approximately 1000) and in terms of traveling, arrivals are screened, 2 represents restrictions from 101 to 1000 people in terms of gatherings and considering traveling some regions will require arrivals to quarantine, 3 represents restrictions from 11 to 100 people in terms of gatherings and considering traveling some regions will close their airports to arrivals, 4 represents restrictions from 10 or less people in terms of gatherings and considering traveling all regions will close their airports or all borders will be closed. Looking at the graph and the values for dates it shows that Brazil and the United States have majority of their restrictions made from August and the beginning of September (considering there are more darker shades of blue than lighter in these countries graphs) and these countries are constantly changing their restrictions. The interpretation of the reason these 2 countries are constantly changing their restrictions could be because around these dates the countries have seen a drastic increase or decrease of cases, thus changing the rank accordingly. As for the rest of the countries most shades are roughly spread out in terms of the dates and do not change their restrictions as often as Brazil and the United States have (again my assumption is because these countries did not see a very drastic change in cases). Looking at the public transport values in terms of counties is the only variable with the lowest rank on average, this leads us to assume these numbers have changed perhaps because governments have already put restrictions upon schools, workplaces, public events, gatherings, and traveling people have nothing else to really do outside of their homes thus are forced to stay home, reducing the amount of people taking public transit or car pooling so there is no need to put tight restrictions on when there are less people on public transport to start with. The Na's represent blank data (no data) and looking through the website provided (https://www.bsg.ox.ac.uk/research/research-projects/coronavirus-government-response-tracker) this dataset was created using information available to the public thus we can interpret the government of Brazil (considering it is the only country with NA values) might have publicly released the restrictions but might not have been clear with what is being enforced upon people on these dates so perhaps they changed some restrictions on those days but did not publicly share or it was not clear the requirements they were enforcing. Therefore, with all of these restrictions put in place by the government, people around the world in some regions are recommended or forced to stay at home this year due to the dangers of COVID-19 and the restrictions put in place. Let's look at some factors in more detail.
+
+```{r echo = FALSE, message = FALSE, warning = FALSE}
+response_cases<- left_join(covid_cases, covid_response,by=c("date"="Date", "location"="CountryName")) %>%
+  select(location, date, new_cases, 'C4_Restrictions on gatherings')
+
+response_cases<-rename(response_cases,c("C4_gatherings_restrictions"="C4_Restrictions on gatherings"))
+
+response_cases<- response_cases %>% 
+  drop_na()
+response_cases$C4_gatherings_restrictions<-as.double(response_cases$C4_gatherings_restrictions)
+
+response_cases_AVG<-response_cases %>%
+  group_by(location, C4_gatherings_restrictions) %>% 
+  summarise(AVG_nc=mean(new_cases))
+
+ggplot(response_cases_AVG)+
+  geom_line(mapping=aes(x=AVG_nc,y=C4_gatherings_restrictions, color=factor(location)))+
+  ggtitle("Gathering Restrictions vs New Cases")+
+  ylab("Gathering Restrictions")+ xlab("Average Number of New Cases")
+
+cor(response_cases_AVG$C4_gatherings_restrictions,response_cases_AVG$AVG_nc)
+```
+
+The restrictions placed by the government limits the number of individuals permitted in a gathering. The level of restriction is measured on an ordinal scale, ranging from 0, with no restrictions, to 4, restricting gatherings from 10 people or less. As we look at the covid_response data set, some of the countries of focus such as the United States and Brazil contain data from each state or region. Since the goal is to examine the average for each country, we took the average number of new cases of each country and compared the two variables. We would assume that there would be a causality between the gathering restrictions and the number of new Covid cases. As the number of cases rises, we should see the level of restriction rise in order to protect the health and safety of the population; Or, as the gathering restrictions increase, the number of new cases decrease as there is a decreased amount of people coming into contact with one another. Examining the graph, we do not see a clear trend outlining our prediction. With New Zealand and China, it seems that increasing the gathering restrictions had a strong effect on the number of new cases as both countries did not experience any new cases by October 1, 2020. However, it looks as though there was an increase in gathering restrictions as the number of new cases increased.
+
+We can conclude by stating that the health protocols placed by the governments of the countries react upon the number of cases that arise and do not react before the number of cases rise to prevent such high numbers of Covid cases.
+
+```{r echo = FALSE, message = FALSE, warning = FALSE}
+CR_C6 <- covid_response %>%
+    group_by(CountryName,RegionCode) %>% 
+      summarize(c_C6 = -1*(last(C6_Flag)-C6_Flag[1]))
+
+CC_NC_MR<-covid_cases %>%
+  mutate(MR= total_deaths/total_cases*100) %>% 
+  group_by(location) %>%
+  summarize(pc_NC = (last(new_cases)-new_cases[1])*100/new_cases[1], pc_MR = (last(MR) - MR[1]))
+
+CR_NC_MR <- covid_response %>%
+  mutate(MR = as.numeric(ConfirmedDeaths)/as.numeric(ConfirmedCases)*100, CC = as.numeric(ConfirmedCases)) %>%
+    group_by(CountryName,RegionCode) %>%
+      summarize( pc_NC = ( last(CC)-CC[1] )*100/CC[1], pc_MR = ( last(MR) - MR[1] ) )
+
+CR_C6_NC <- left_join(CR_NC_MR,CR_C6,c("CountryName","RegionCode"))
+
+tmp <- !(is.na(CR_C6_NC$c_C6)) & !(is.na(CR_C6_NC$pc_NC))
+CR_C6_NC <- CR_C6_NC[tmp,]
+
+CR_C6_NC %>% 
+  group_by(c_C6) %>%
+    summarise(AVG_pc_NC = mean(pc_NC))
+
+ggplot(CR_C6_NC, aes(x=c_C6, y=pc_NC, group=c_C6))+
+  geom_boxplot()+
+  ggtitle("Stay at Home Requirements vs Percentage of New Cases")+
+  xlab("Change in At Home Requirements")+
+  ylab("Percentage of New Cases")
+```
+
+Looking at the relationship between the change in lock down policy (c_C6) and the percentage increase in the number of cases: The countries that had stricter lock down policies did have a smaller average percentage change of new cases (the number of increasing cases was smaller). While the countries that had adopted a stricter lock down policy had fewer new cases on average, the difference is still within the std dev of countries that did not adopt a stricter lock down policy. Though we would assume that with stronger restrictions implemented, the number of new cases would decrease, this seems to imply that adopting a stricter lock down policy did nothing to reduce the spread of Covid-19. 
+
+Let's focus on a country with a high number of new cases such as the United States
+```{r echo = FALSE, message = FALSE, warning = FALSE}
+USA_CR_C6_NC <- filter(CR_C6_NC, CountryName == "United States") 
+
+CR_C6_NC %>% 
+  group_by(c_C6) %>%
+  summarise(AVG_pc_NC = mean(pc_NC))
+
+ ggplot(CR_C6_NC, aes(x=c_C6, y=pc_NC, group=c_C6))+ 
+   geom_boxplot()+
+     ggtitle("Stay at Home Requirements vs Percentage of New Cases in the US")+
+   xlab("Change in At Home Requirements")+
+   ylab("Percentage of New Cases")
+```
+
+These plots may show that increasing the lock down policy resulted in a smaller percentage change in new Covid cases. 
+The states that had stricter lock down policies did have a smaller average pc_NC value (the number of increased cases was smaller). While the states that had adopted a stricter lock down policy had fewer new cases on average the difference is still within the standard deviation of states that did not adopt a stricter lock down policy. This seems to imply that adopting a stricter lock down policy did nothing to reduce the spread of the Covid-19.
+
+```{r echo = FALSE, message = FALSE, warning = FALSE}
+CHI_cases<- left_join(covid_response,covid_cases, by=c("CountryName"="location", "Date"="date")) %>% 
+  select(CountryName, RegionName, Date, new_cases, total_cases,ConfirmedCases, ContainmentHealthIndex)
+
+CHI_cases<- left_join(CHI_cases, population, by=c("CountryName"="Country")) %>% 
+  mutate(total_cases_per=(total_cases/Population)*100)
+
+as.tibble(CHI_cases)
+
+ggplot(CHI_cases)+
+  geom_point(mapping=aes(x=ContainmentHealthIndex,y=total_cases_per, color=factor(CountryName)))+
+  facet_wrap(vars(Date))+
+  ggtitle("Containment Health Index vs Total Cases Percentage")+
+  ylab("Total Cases Percentage")
+
+CHI_cases%>% 
+  filter(CountryName==c("Brazil"), Date=="2020-07-31") %>% 
+  group_by(CountryName) %>% 
+  summarise(AVG=mean(ContainmentHealthIndex, na.rm=TRUE))
+
+```
+
+To further explore the effects of Covid-19, we analyzed the relationship between the containment and health index and the total Covid cases in the countries of focus. The containment and health index is a measure of the policy response indicators including school closures, workplace closures, travel bans, etc., scaled to a value from 0 to 100, where 100 is the strictest. The severity of the total number of Covid cases per country would be more accurately represented as a percentage of the total population of said country. 
+
+As the containment and health index represents how strictly the government implemented restrictions to limit the spread of Covid, measuring this relationship with the percentage of total cases in a country can allow us to see how these new laws and restrictions are contributing to the health of the population. Looking at the scatter plot from July 31, 2020, the points seem to be very scattered, not showing a consistent relationship. It does however appear that countries such as China, India, Australia, and Morocco have higher containment health indexes ranging from close to 70 to 80, while also experiencing less than 2.5% total Covid case percentage in the country. While analyzing countries such as the United States we can see that across the states, the containment health index varies from a range of approximately 50 t0 85. However since the total cases percentage is represented for the whole country and not the states individually, we can take the average of all of the containment health indexes of the states to get an estimation of where the United States fits in with the other countries. With an average containment health index of 65.06, the United States has a very high percentage of Covid cases compared to all of the other countries. As the United States is leading in Covid cases globally, it is not a surprise even without a low containment health index, the total cases percentage is high. Similarly with Brazil, with an average containment health index of 77.29, the total cases percentage is the second highest, with 1.2% of the population being infected by Covid. Now let's compare this to the scatter plot with the data from October 1, 2020. We can see that from July to October the 10 out of the 12 countries saw a significant increase in the total cases percentage and also experienced a decrease in the containment health index. This could be due to the fact that during the time between July and October, governments started to be more lenient on the restrictions as the spread of Covid slowed down in many countries in the world. We can assume that due to this, the cases in the countries started to rise once again as individuals came into more contact with others. We can see in the graphs that Argentina saw a large rise of Covid cases from July 31st to October 1st, and it is possible that this is the reason their containment health index slightly rose.
+
+Based on these findings, although there is not a strong correlation within the individual graphs themselves, we can see a drop in the containment health index from the first date to the second date, and as a result, we can see a rise in the total Covid cases in each country.
+
+```{r echo = FALSE, message = FALSE, warning = FALSE}
+USA<- CHI_cases %>% 
+  filter(CountryName=="United States")
+
+USA_diff<-USA %>% 
+  mutate("ConfirmedCases_diff"= as.numeric(ConfirmedCases), "CHI_diff"=as.numeric(ContainmentHealthIndex))
+
+tempseq<-seq(1,105,2)
+
+for (i in tempseq){
+  USA_diff$ConfirmedCases_diff[i]<-as.numeric(USA_diff$ConfirmedCases[i+1])-as.numeric(USA_diff$ConfirmedCases[i])
+  USA_diff$CHI_diff[i]<-as.numeric(USA_diff$ContainmentHealthIndex[i+1])-as.numeric(USA_diff$ContainmentHealthIndex[i])
+}
+
+USA_diff<-slice(USA_diff, seq(3,105,2)) %>% 
+  select(CountryName, RegionName, ConfirmedCases_diff, CHI_diff)
+
+DIFFMODEL<-lm(USA_diff$ConfirmedCases_diff~USA_diff$CHI_diff)
+
+ggplot(USA_diff)+
+  geom_point(mapping=aes(y=ConfirmedCases_diff, x=CHI_diff, color=factor(RegionName)))+
+  geom_abline(slope=coef(DIFFMODEL)[2],intercept = coef(DIFFMODEL)[1])+
+  ggtitle("CHI and Total Confirmed Cases Difference in the US") +
+  theme(legend.position = "none")
+
+cor(USA_diff$ConfirmedCases_diff,USA_diff$CHI_diff)
+  
+```
+
+To get a stronger understanding of how the containment health index affects the spread of Covid, let's focus on a single country, such as the United States. We took the difference between the containment health index between July 31,2020 and October 1, 2020 and the confirmed cases between those two dates. We would predict that with a larger difference in the containment health index in the state, we would see a larger number of confirmed cases between the two dates. The regression model shows a slightly negative relationship however the correlation is very weak, with a value of -0.06198184. The values do seem to be clustered together in the negative side of the y-axis, suggesting that the majority of the states had lowered their containment health indexes throughout the months and all had no decreases in terms of the number of confirmed cases. Now, a specific factor related to the Containment Health Index and its relation to the number of cases will be analyzed.
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+#test workplace closing against confirmed cases
+
+gov_responses %>%
+  filter(Date == "2020-10-01") %>%
+  filter(!is.na(`C2_Workplace closing`)) %>%
+  ggplot(aes(y = log(ConfirmedCases))) +
+  #geom_point(size = 4)
+  geom_boxplot() +
+  facet_wrap(~`C2_Workplace closing`) +
+  ggtitle("Confirmed Cases per Category of Workplace Closure")
+```
+
+For confirmed cases, the variable was logged to spread out the data more evenly. In the graph above, we see that a higher workplace closure had a higher range of confirmed cases. This also reenforces the observation that countries are mor reactive than proactive, as if a given country had a higher number of cases, they had a higher workplace closure score. Now, let's observe the average workplace closure score per regime type.
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+democracy_index %>%
+  full_join(gov_responses) %>%
+  filter(Date == "2020-10-01") %>%
+  group_by(`Regime type`) %>%
+  summarise(work_close_score = mean(`C2_Workplace closing`, na.rm = TRUE))
+```
+
+This graph shows the average workplace closure score, which is the mean of the workplace closure policies different regime types were enforcing. A higher workplace closure score means on average, that particular regime type was enforcing a stricter workplace closure policy. From the graph, we can see that the hybrid regimes had the highest workplace closure score, followed by full democracies, flawed democracies and finally the hybrid regimes with the lowest workplace closure score. The average score could mainly be related to the average GDP per capita. A higher GDP per capita means more income per household. A higher income per household means that even if less people are working per household, the standard of life wouldn't drop by too much as the money coming in wouldn't go too low. However, for a lower gdp per capita, if more people were to stop working, the household's income could drop to a level where the quality of life can't be maintained. Going by this logic, it makes sense that governments with higher gdp per capitas can enforce stricter workplace closure policies, as households under those governments can afford to lose a few working members. Let's look at the average GDP per capitas for different government types to double check this theory.
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+#avg gdp per capita per regime type
+democracy_index %>%
+  full_join(gdp_per_capita, by = "Country") %>%
+  group_by(`Regime type`) %>%
+  summarise(avg_gdp_per_capita = mean(`GDP - PER CAPITA (PPP)`, na.rm = TRUE))
+```
+
+The above tibble does in fact prove the previous statement. Therefore, it makes sense that full democracies, which have the highest average gdp per capita were able to enforce stricter workplace closure policies, followed by flawed democracies and finally hybrid regimes which had the lowest gdp per capita and coincidentally, the lowest average workplace closure score. The only exception to this logic are the authoriarian regimes, as they don't have the highest gdp per capita, but do have the highest workplace closure score. One possible explanation is to look deeper into the data. 
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+democracy_index %>%
+  full_join(gov_responses) %>%
+  group_by(`Regime type`, Date) %>%
+  summarise(avg_cases = mean(ConfirmedCases, na.rm = TRUE)) %>%
+  ggplot(aes(x = `Regime type`, y = avg_cases)) +
+  geom_point(size = 4) +
+  facet_wrap(~Date) +
+  theme(axis.text.x = element_text(vjust = 0.5, angle = 90)) +
+  ggtitle("Average Cases per Regime Type per Date")
+```
+
+This graph shows the average number of cases on either date per regime type. It is clear to see that flawed democracies had the highest increase, followed by hybrid regimes, the full democracies and finally authoritarian regimes, who stayed pretty much the same. A likely factor affecting the different rates of increase in cases when the second wave of COVID hit in October is the strictness of workplace closures, 
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+gov_responses %>%
+  filter(Country == "China") %>%
+  select(Country, Date, `C2_Workplace closing`, ConfirmedCases)
+```
+
+The only authoritarian regime is China, and we see that their workplace closure score didn't change much from July 31 to October 1. Consequently, we also see that they didn't really experience a second wave of COVID, as their number of cases compared in both dates barely changed. Therefore, it's very likely that the Chinese government kept factors controlling the spread of the virus very strict to avoid a giant surge in cases in a second wave, which is why their average workplace closure score is so high despite not having the highest gdp per capita among the different government types. Let's look at how GDP affects other factors of a country.
+
+```{r echo = FALSE, message = FALSE, warning = FALSE}
+gdp_per_capita %>%
+  full_join(happiness_score) %>%
+  ggplot(aes(x = `GDP - PER CAPITA (PPP)`, y = `Ladder score`)) +
+  geom_point() +
+  ggtitle("GDP Per Capita vs Ladder Score")
+```
+
+This graph shows the relationship between GDP per capita and the ladder score for different countries. The relation looks almost logarithmic, showing that as the GDP per capita increases, so too does the ladder score, or general happiness of a country's population. Let's now look at the percentage of people using the Internet by country and the associated country's happiness score.
+
+```{r echo = FALSE, warning = FALSE, message = FALSE}
+happinessscore2 %>%
+  full_join(internetuser2) %>%
+  ggplot(aes(x = percentage, y = Happiness_score)) +
+  geom_point() +
+  ggtitle("% of Population with Internet Access vs Happiness Score")
+```
+
+Here, we see a rough trend where as the percentage of people with access to the Internet increases, so does the respective country's happiness ladder score. Now, let's analyse the percentage of people with Internet access by country in more detail.
+
+```{r, fig.width=6,fig.height=4, echo=FALSE, warning=FALSE, message = FALSE}
+
+internetuser2 %>%
+  ggplot(mapping = aes(x = Years, y = percentage)) + #putting years as the xaxis and percentage as the yaxis 
+    geom_point(mapping = aes(color = Country))+ #adds points on graph
+    geom_smooth(se = TRUE)+ #adds the curve on graph
+  ggtitle("Years vs percentage by Country") + 
+  theme(plot.title = element_text(hjust = 0.5))#adding the title and centering it
+``` 
+
+This graph displays the overall internet usage as a percentage according to the year with the points representing the countries we chose. The internet usage dataset does not have any information upon 2020 therefore there is no direct relationship between COVID-19 infection, recovery, or death and the internet usage dataset thus assumptions were made. The curve seen above is gradually increasing in regards to percentage although the confidence interval is large (resulting in a large uncertainty level) we can see that on average these countries internet usage is increasing. Thus this shows that as years go by the internet usage increases but this year because of the restrictions to keep people at home considering since most workplaces, gatherings, public events and traveling are limited, thus we can assume that the internet usage would globally increase drastically. Furthermore, since many students that chose or are forced to stay home instead of go to school are using the internet when they are logging into classes (something that they were not doing before), when people face time each other (because of very tight restrictions thus are required to not get out of their homes unless because of essential reasons), or are simply on the internet all day because they can not go outside as they used to do, all of these things require the internet thus this would ultimately increase the internet usage drastically around the world this year. 
+
+```{r, fig.width=11,fig.height=5, echo=FALSE, warning=FALSE}
+internetuser2 %>%
+
+ggplot(mapping = aes(x = Years, y = percentage)) + #makes the years as the xaxis ad percentage as the yaxis
+  geom_point()+ #adds points to the graph
+  geom_line(alpha = 1/2)+ #connects the dots to the points and shades the lines
+  facet_wrap(~Country)+ #searates the graph by country
+  ggtitle("Years vs percentage facet by Country") + #adds the title and centers it
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+This graph shows each country's curve along with their points to help see the trend easier. Looking at each country all show an upwards trend except for Australia and India, however Australia's internet usage seems to be steady for 2 years at about 87% while India's internet usage seems to be taking a dip in 2018. Additionally, taking a look at this graph all countries' internet usage is increasing except for 2 therefore this shows that most likely the average usage would be increasing similar to the second graph shown above with the large uncertainty levels. Therefore, as stated above considering the analysis done in both graphs we could conclude that the overall internet usage in mainly all countries would drastically increase because of the times that we are in where students stare at a screen all day resulting in the internet usage increasing and as people are recommended to stay home they would most likely be on the internet(social media) much more than before. 
+
+
+```{r fig.width=4, fig.height=3, echo=FALSE, warning=FALSE}
+internetuser2 %>%
+  ggplot( mapping = aes(x = Years, y = percentage)) + #takes the years as the x axis and percentage as the y axis
+    geom_boxplot()+ #creates the boxplot with median, min, max, Q1,Q3
+  ggtitle("Years vs percentage") + #adds the title and centers it 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+This boxplot shows the median as a very high value, approximately at 71%, we can assume that the percentage on average is increasing considering if it was decreasing the median, first quartile, and third quartile would be much lower perhaps below the middle of the max and min points. Therefore, considering internet usage is increasing all around the world the way people see themselves and others becomes different in a negative way because as people are on the internet more they are losing  communication skills and as time goes on soon people will become very isolated and believe they are happy in the short term but suffer in the long term. Additionally, as people are on the internet more to read articles or watch movies they are being exposed to actresses, and actors this in turn makes themselves feel self conscious about their body image considering many become anorexic and in the long run have issues with self confidence along with self esteem, thus this harms their mental and physical state. This especially applies to 2020 because people are on the internet (like social media) constantly because people can not go out and hang out with friends but are urged to stay home which in turn affects their mental health.
+
+```{r, fig.width=6,fig.height=3, echo=FALSE, message=FALSE}
+happinessscore2 %>%
+  ggplot(mapping = aes(x = Happiness_score, y = Country)) + #adds the happiness score on the xaxis and country on y-axis
+    geom_point(alpha = 0.6)+#adds the points on the graph but are a bit shaded
+    geom_smooth(se= TRUE)+
+  ggtitle("Happiness score vs country") + #adds title and centers it 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+The happiness score dataset does not have any information upon 2020 therefore there is no direct relationship between COVID-19 infection, recovery, or death and the happiness score dataset thus assumptions were made. This graph shows the happiness score according to countries thus as seen above most countries have a relatively high score except for about 4 countries. According to this information we could assume the graph is skewed to the left considering the mean shown below and the median are really close (the difference is about 0.28) but are closer to the maximum value and looking at the score around 7 has much more points than the left side. Thus an assumption that can be made for previous years (this data was collected in 2017-2019) is that the score did increase considering technology and technological advancements countries have made over the years, technology is always developing and improving resulting in a better lifestyle for people because as older technology becomes less expensive prices are changed to be more affordable for anyone to purchase. Furthermore, when looking at the graph it shows the countries that are among the highest are developed countries with high technological advancement while the lowest scores are from developing countries with a low technological advancement. We can assume for this data related to COVID-19 is that although the happiness score seems to be increasing in previous years this year I believe that because people are recommended or for many countries required to stay at home this affects one's mental health and thus changes how they see themselves resulting in the happiness score decreasing because people are unable to see their families or friends and the new normal has disconnected people by not being able to go out as they did before. 
+
+```{r echo=FALSE, warning=FALSE}
+happinessscore2 %>%
+summarize(
+  min = min(Happiness_score),
+  mean = mean(Happiness_score),
+  median = median(Happiness_score),
+  max = max(Happiness_score),
+  )#this table adds the min, mean, median, and max for the percentage 
+```
+
+Thus, self perception and mental health are greatly affected by COVID-19 because of the internet usage on the rise while happiness score is declining considering sitting in front of a screen all day is not good for students or individuals staying home because people can develop problems like neck strain, headaches from looking at phone screens or computer screens for long periods of time, leg pain because people are sitting in their chairs for a long time and many more. Alongside these developed pains people begin to become less happy because they can not go outside (as it is recommended to stay at home) and are not able to go outside without the fear of COVID-19.
+
+##Conclusion##
+
+In conclusion, the Covid-19 pandemic has had a huge impact on the four factors that were analyzed in this report. The following is a summary of the observations made in this report.
+
+We can see that as the Covid-19 cases and deaths rose, the government acted in order to contain the spread of this virus to protect the health of the population. It was expected that the government response would be a strong factor that created a causal effect on the number of cases and the health of the population, the data seems to demonstrate that the effect was reversed. The more cases caused the government to then react to this global health emergency and implement restrictions and more focus on this matter. There was a strong positive correlation between a country's GDP and its health expenditure with a correlation coefficient of 0.8369039. The more Covid deaths that occurred saw a country with a higher health expenditure. 
+
+We discovered that as years went by the internet usage would gradually increase but considering this year the usage would increase greatly as people are recommended to stay at home. Additionally, although the world happiness score is assumed to be increasing this would not be the case in regard to this year as it would decrease because people are confined to their homes impacting people’s mental and physical health. 
+
+For Employment, it was discovered that based on the observations for the unemployment data and labour force data, there is not much of a direct correlation with Covid-19. The labour force in each of the countries that were chosen for this report saw a smaller increase in the number of workers from 2019 to 2020 when compared with earlier years. By analyzing the average number of change in workers yearly, it was found that most countries had an increase of workers from 2019 to 2020 that was significantly lower than the average change in workers. For example, Argentina had an average increase of 353,032 workers, but in 2019 to 2020 they saw an increase of only 204,754 workers. Furthermore, when referring to the GDP per capita a hypothesis that was formed was that the higher the total number of years of schooling, the higher the GDP, and the more number of tests that were conducted. 
+
+When looking at the political factors related to COVID-19, it was observed that governments used workplace closure to control the spread of the virus, and the strictness at which they could close down businesses was determined by their respective average GDP per capitas. If a government type had a higher average GDP per capita, that type of government would have a higher workplace closure score to control the spread of the virus. It was also observed that a higher GDP per capita meant more tests and a larger health expenditure, which would allow governments to gauge and treat the spread of the virus more effectively. A linear model fitted to GDP per capita and tests per thousand had an R-squared of ~0.6, which means the model captured about 60% of the data, which means that GDP per capita and tests per thousand have a relatively strong linear relation. Looking at the data, the government types with the best “control” of the virus were full democracies, as they had the highest average GDP per capitas, and the authoritarian regimes (specifically China), as they continually enforced strict workplace closures to control the spread of the virus and avoid a second wave like a lot of other countries.
+
+Through this in depth analysis of the impacts that Covid-19 has had in the world, we can see based on the data, the pandemic in some way or another affected all of health, self perception, employment, and politics. As COVID-19 continues to affect the world, more data will become available, allowing for further analysis to discover trends not discovered in this report.
